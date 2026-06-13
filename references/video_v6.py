@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-#!/usr/bin/env python3
 """
 视频生成 v6 - 最终稳定版
-基于每段音频真实时长，SRT字幕精确同步
-已修复：中文字体、视频时长精确限制
+纯黑背景，方便达芬奇抠字幕
 """
 import subprocess, imageio_ffmpeg, os, json, shutil
 from pathlib import Path
-from PIL import Image, ImageDraw
+from PIL import Image
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 SW, SH = 1280, 720
@@ -24,6 +22,28 @@ def ffprobe_dur(fp):
 def fmt_srt(s):
     return f"{int(s//3600):02d}:{int((s%3600)//60):02d}:{int(s%60):02d},{int((s%1)*1000):03d}"
 
+def count_segments(script_path, segments_dir):
+    script = json.load(open(script_path))
+    expected = len(script)
+    actual = len(list(Path(segments_dir).glob("*.wav")))
+    print(f"   📊 段落检查：脚本={expected}段 | 音频={actual}段")
+    if expected != actual:
+        print(f"   ⚠️ 警告：段落数不匹配！")
+        return False
+    print(f"   ✅ 段落数匹配")
+    return True
+
+def verify_sync(video_path, audio_path):
+    v_dur = ffprobe_dur(video_path)
+    a_dur = ffprobe_dur(audio_path)
+    diff = abs(v_dur - a_dur)
+    print(f"   📊 时长检查：音频={a_dur:.1f}s | 视频={v_dur:.1f}s | 差异={diff:.2f}s")
+    if diff > 1.0:
+        print(f"   ⚠️ 警告：差异超过1秒，可能不同步！")
+        return False
+    print(f"   ✅ 同步正常")
+    return True
+
 def generate_video(ep_dir):
     ep_dir = Path(ep_dir)
     script = json.load(open(ep_dir/"script.json"))
@@ -32,7 +52,7 @@ def generate_video(ep_dir):
     temp.mkdir(exist_ok=True)
     out = ep_dir/"video_v6.mp4"
     
-    print(f"🎬 视频生成 v6（精确同步）")
+    print(f"🎬 视频生成 v6")
     
     # 收集WAV
     wavs = []
@@ -72,16 +92,11 @@ def generate_video(ep_dir):
             idx += 1; cur += cd
     with open(srt, "w") as f: f.write("\n".join(lines))
     
-    # 4. 背景图（使用 STHeiti 中文字体）
-    bg = Image.new("RGB", (SW, SH), (20, 25, 35))
-    d = ImageDraw.Draw(bg)
-    for i in range(0, SH, 2):
-        d.line([(0,i),(SW,i)], fill=(int(20+i/SH*30), int(25+i/SH*20), int(35+i/SH*40)))
-    d.rectangle([(0,0),(SW,4)], fill=(80,140,255))
-    d.rectangle([(0,SH-4),(SW,SH)], fill=(80,140,255))
+    # 4. 背景图（纯黑，方便后期抠字幕）
+    bg = Image.new("RGB", (SW, SH), (0, 0, 0))
     bg.save(temp/"bg.png")
     
-    # 5. 合成（使用 -t 精确限制时长 + STHeiti 字体）
+    # 5. 合成
     print(f"   🎬 合成视频...")
     srt_esc = str(srt).replace("\\", "/").replace(":", "\\:")
     cmd = [FFMPEG, "-y", "-loop", "1", "-i", str(temp/"bg.png"), "-i", str(concat),
@@ -92,15 +107,14 @@ def generate_video(ep_dir):
     shutil.rmtree(temp, ignore_errors=True)
     
     if out.exists() and out.stat().st_size > 1000:
+        # 验证
+        print(f"\n📊 验证：")
+        count_segments(str(ep_dir/"script.json"), str(seg_dir))
+        verify_sync(str(out), str(ep_dir/"audio.wav") if (ep_dir/"audio.wav").exists() else str(concat))
+        
         final_dur = ffprobe_dur(str(out))
-        print(f"   ✅ {out}")
+        print(f"\n   ✅ {out}")
         print(f"      时长：{final_dur:.1f}秒 | 大小：{out.stat().st_size/1024/1024:.1f}MB")
-        return str(out)
-    return None
-
-if __name__ == "__main__":
-    import sys
-    generate_video(sys.argv[1])
         return str(out)
     return None
 
