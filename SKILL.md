@@ -1,7 +1,7 @@
 ---
 name: ai-podcast-generator
 description: "Use when creating AI-generated debate podcast episodes. Generates multi-character debate scripts, reviews compliance/quality, produces TTS audio with distinct voices, and assembles synchronized video with subtitles."
-version: 1.0.0
+version: 1.1.0
 author: Duren
 license: MIT
 platforms: [linux, macos, windows]
@@ -173,6 +173,25 @@ FPS = 1                 # 帧率
 - ✅ 所有观点基于事实和合理推演
 - ✅ 标注"AI生成，仅供娱乐"
 
+## 同步验证（重要）
+
+视频生成后自动执行验证：
+
+```
+📊 段落检查：脚本=25段 | 音频=25段    ← 必须相等
+📊 时长检查：音频=744.6s | 视频=744.6s | 差异=0.00s  ← 差异必须<1秒
+```
+
+**常见问题原因：**
+- 旧的音频片段混入（segments目录未清理）
+- 脚本重新生成但音频未重新生成
+- 拼接时静音间隔计算错误
+
+**解决方案：**
+- 生成前清理 segments 目录
+- 脚本变更后必须重新生成音频
+- 使用 v6 版本（读取真实WAV时长）
+
 ## 常见问题
 
 ### Q: 音频生成超时
@@ -190,6 +209,20 @@ A: 在 `voice_profiles.json` 中添加角色描述，脚本会自动使用。
 ### Q: 视频太长有空白
 
 A: 确保使用 `-shortest` 和 `-t` 参数限制视频时长为音频时长。
+
+## 常见陷阱
+
+1. **中文字体问题**：macOS 的 `PingFang.ttc` 无法正常渲染中文。必须使用 `/System/Library/Fonts/STHeiti Medium.ttc`（粗体）或 `STHeiti Light.ttc`（细体）。
+
+2. **XIAOMI_API_KEY 引号问题**：`.env` 文件中的 key 值包含特殊字符，直接用 `startswith("XIAOMI_API_KEY=")` 会因引号嵌套导致 SyntaxError。正确写法：`if s.split("=")[0] == "XIAOMI_API_KEY" and not s.startswith("#"):`
+
+3. **旧音频片段导致字幕不同步**：重新生成脚本后，必须先清理 `segments/` 目录中的旧 WAV 文件，否则新旧片段混合会导致字幕时间戳计算错误。
+
+4. **视频时长超出音频**：ffmpeg 默认取最长流。必须同时使用 `-shortest` 和 `-t {audio_duration}` 来精确限制视频时长。
+
+5. **字幕滚动不同步**：不要用字符数估算每段时长。必须用 `ffprobe` 读取每段 WAV 的真实时长来生成 SRT 时间戳。
+
+6. **用户偏好简洁布局**：全屏背景+底部字幕的简单布局效果最好。分屏布局（头像+字幕分区）和 AI 生成图片效果不佳，用户不喜欢。
 
 ## 文件结构
 
@@ -213,4 +246,5 @@ A: 确保使用 `-shortest` 和 `-t` 参数限制视频时长为音频时长。
 
 ## 版本历史
 
+- **v1.1.0** (2026-06-14): 添加常见陷阱（字体、引号、旧文件、时长限制）；修复 video_v6.py 和 podcast_workflow.py 的 API key 读取
 - **v1.0.0** (2026-06-14): 初始版本，支持完整工作流

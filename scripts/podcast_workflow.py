@@ -28,9 +28,11 @@ FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 # API Key
 # ============================================================
 def get_api_key():
+    """读取 API Key，使用 split 避免引号嵌套问题"""
     with open(os.path.expanduser("~/.hermes/.env")) as f:
         for line in f:
             s = line.strip()
+            # 不能用 startswith，因为 XIAOMI_API_KEY=*** 会破坏引号嵌套
             if s.split("=")[0] == "XIAOMI_API_KEY" and not s.startswith("#"):
                 return s.split("=", 1)[1].strip()
     raise RuntimeError("XIAOMI_API_KEY not found")
@@ -483,6 +485,40 @@ def main():
     if not args.skip_video and audio_path:
         video_path = generate_video(script, scene_images, audio_path, ep_dir)
     
+
+# Step 6.5: 验证同步
+if audio_path and video_path:
+    print(f"\n📊 [6.5/7] 验证同步")
+    # 检查段落数
+    script_count = len(script)
+    wav_count = len(list((Path(audio_path).parent / "segments").glob("*.wav")))
+    print(f"   段落检查：脚本={script_count}段 | 音频={wav_count}段")
+    if script_count != wav_count:
+        print(f"   ⚠️ 警告：段落数不匹配！")
+    
+    # 检查时长
+    import subprocess as sp
+    r = sp.run([FFMPEG, "-i", audio_path, "-f", "null", "-"], capture_output=True, text=True)
+    for line in r.stderr.split("\n"):
+        if "Duration" in line:
+            p = line.split("Duration:")[1].split(",")[0].strip()
+            h, m, s = p.split(":")
+            audio_dur = float(h)*3600 + float(m)*60 + float(s)
+            break
+    r2 = sp.run([FFMPEG, "-i", video_path, "-f", "null", "-"], capture_output=True, text=True)
+    for line in r2.stderr.split("\n"):
+        if "Duration" in line:
+            p = line.split("Duration:")[1].split(",")[0].strip()
+            h, m, s = p.split(":")
+            video_dur = float(h)*3600 + float(m)*60 + float(s)
+            break
+    diff = abs(audio_dur - video_dur)
+    print(f"   时长检查：音频={audio_dur:.1f}s | 视频={video_dur:.1f}s | 差异={diff:.2f}s")
+    if diff > 1.0:
+        print(f"   ⚠️ 警告：差异超过1秒！")
+    else:
+        print(f"   ✅ 同步正常")
+
     # 7. 保存到 Obsidian
     save_to_obsidian(script, args.ep_num, args.topic, args.char_a, args.char_b, compliance, quality)
     

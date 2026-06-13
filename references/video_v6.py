@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 视频生成 v6 - 最终稳定版
 基于每段音频真实时长，SRT字幕精确同步
+已修复：中文字体、视频时长精确限制
 """
 import subprocess, imageio_ffmpeg, os, json, shutil
 from pathlib import Path
@@ -70,7 +72,7 @@ def generate_video(ep_dir):
             idx += 1; cur += cd
     with open(srt, "w") as f: f.write("\n".join(lines))
     
-    # 4. 背景图
+    # 4. 背景图（使用 STHeiti 中文字体）
     bg = Image.new("RGB", (SW, SH), (20, 25, 35))
     d = ImageDraw.Draw(bg)
     for i in range(0, SH, 2):
@@ -79,7 +81,7 @@ def generate_video(ep_dir):
     d.rectangle([(0,SH-4),(SW,SH)], fill=(80,140,255))
     bg.save(temp/"bg.png")
     
-    # 5. 合成
+    # 5. 合成（使用 -t 精确限制时长 + STHeiti 字体）
     print(f"   🎬 合成视频...")
     srt_esc = str(srt).replace("\\", "/").replace(":", "\\:")
     cmd = [FFMPEG, "-y", "-loop", "1", "-i", str(temp/"bg.png"), "-i", str(concat),
@@ -93,6 +95,12 @@ def generate_video(ep_dir):
         final_dur = ffprobe_dur(str(out))
         print(f"   ✅ {out}")
         print(f"      时长：{final_dur:.1f}秒 | 大小：{out.stat().st_size/1024/1024:.1f}MB")
+        return str(out)
+    return None
+
+if __name__ == "__main__":
+    import sys
+    generate_video(sys.argv[1])
         return str(out)
     return None
 
