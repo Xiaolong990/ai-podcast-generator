@@ -1,6 +1,6 @@
 ---
 name: ai-podcast-generator
-description: "Use when creating AI-generated debate podcast episodes. Generates multi-character debate scripts, reviews compliance/quality, produces TTS audio with distinct voices, and assembles synchronized video with subtitles."
+description: "Use when creating AI-generated debate podcast episodes. Generates multi-character debate scripts, reviews compliance/quality, produces TTS audio with distinct voices, and assembles synchronized video with pure-black subtitles for DaVinci Resolve editing."
 version: 1.1.0
 author: Duren
 license: MIT
@@ -81,10 +81,10 @@ python3 scripts/podcast_workflow.py \
 
 ## 工作流详解
 
-### 6步自动化流程
+### 10步自动化流程
 
 ```
-📝 生成脚本 → 🔍 合规审查 → ⭐ 质量审查 → 🎨 生成图像 → 🎙️ 生成音频 → 🎬 合成视频
+📝 生成脚本 → 🔍 合规审查 → ⭐ 质量审查 → 🎨 生成图像 → 🎙️ 生成音频 → 🎬 合成视频 → 📊 验证同步 → 🖼️ 配图提示词 → 📝 节目简介 → 📜 LRC字幕
 ```
 
 | 步骤 | 工具 | 说明 |
@@ -95,6 +95,10 @@ python3 scripts/podcast_workflow.py \
 | 4. 生成图像 | Pillow | 角色头像占位图 |
 | 5. 生成音频 | MiMo-V2.5-TTS | 多角色语音合成 |
 | 6. 合成视频 | ffmpeg | 图像+字幕+音频 |
+| 7. 验证同步 | ffmpeg | 检查段落数+时长 |
+| 8. 配图提示词 | 生成 | 豆包/SD封面+场景提示词 |
+| 9. 节目简介 | 生成 | 小宇宙/喜马拉雅/B站发布文案 |
+| 10. LRC字幕 | 生成 | 双语时间轴字幕文件 |
 
 ### 输出文件
 
@@ -104,7 +108,10 @@ python3 scripts/podcast_workflow.py \
 ├── audio.wav             ← 完整音频
 ├── video_v6.mp4          ← 带字幕视频
 ├── images/               ← 角色图像
-└── segments/             ← 分段音频
+├── segments/             ← 分段音频
+├── image_prompts.md      ← 配图提示词
+├── episode_description.md ← 节目简介
+└── EP{XX}_*.lrc          ← 双语字幕
 ```
 
 ## 角色语音设计
@@ -224,6 +231,77 @@ A: 确保使用 `-shortest` 和 `-t` 参数限制视频时长为音频时长。
 
 6. **用户偏好简洁布局**：全屏背景+底部字幕的简单布局效果最好。分屏布局（头像+字幕分区）和 AI 生成图片效果不佳，用户不喜欢。
 
+7. **视频背景必须纯黑**：用户使用达芬奇剪辑，需要从视频中抠出字幕层。背景必须是纯黑 RGB(0,0,0)，不能有渐变或装饰线，否则 Delta Keyer 无法干净抠出字幕。
+
+8. **飞书推送用 send_message**：不要用 webhook URL。Hermes 已集成飞书，直接用 `send_message(action='send', target='feishu:oc_69021b60724dc0467d0bf6172c7abce6', message=...)` 推送脚本审核通知。
+
+## 封面生成
+
+MiMo 没有图像生成模型。封面需手动制作：
+
+### Stable Diffusion 提示词模板
+
+**孔子 vs 苏格拉底：**
+```
+Cartoon illustration, two philosophers debating.
+Left: Chinese Confucius in red-gold robes, wise expression.
+Right: Greek Socrates in white toga, questioning expression.
+Center: glowing "VS" text.
+Background: dark blue, yin-yang left, Greek columns right.
+Style: colorful cartoon, clean lines, flat design.
+Bottom text: "东方哲学 vs 西方哲学".
+Square 1024x1024.
+```
+
+**牛顿 vs 爱因斯坦：**
+```
+Cartoon illustration, two scientists debating.
+Left: Newton in 17th century black coat, holding apple.
+Right: Einstein with wild white hair, casual sweater.
+Center: glowing "VS" text.
+Background: dark blue, gravity waves left, atoms right.
+Style: colorful cartoon, clean lines, flat design.
+Bottom text: "物理学的终极理论".
+Square 1024x1024.
+```
+
+封面保存为 `cover.png`（1280x1280 或 1024x1024），上传到播客平台。
+
+## 发布到播客平台
+
+### 小宇宙（推荐首选）
+
+1. 打开 https://creator.xiaoyuzhou.com.cn
+2. 创建播客：名称「AI神仙打架」，分类「科技/知识」
+3. 上传音频（audio.wav）+ 封面（cover.png）
+4. 填写标题和简介
+
+### 喜马拉雅
+
+1. 打开 https://www.ximalaya.com/creator
+2. 创建专辑：名称「AI神仙打架」
+3. 上传音频 + 封面
+
+### B站（视频版）
+
+1. 打开 https://member.bilibili.com/platform/upload/video/frame
+2. 上传视频（video_v6.mp4）
+3. 分区：知识 > 科学科普
+4. 标签：AI辩论、播客、哲学
+
+### 推荐标题格式
+
+```
+【AI神仙打架】正方vs反方：辩题？
+```
+
+### 推荐简介模板
+
+```
+当[正方]遇上[反方]，两位[领域]巨匠将就"[辩题]"展开激烈辩论。
+本节目由AI生成，所有观点仅供娱乐和思考。
+```
+
 ## 文件结构
 
 ```
@@ -246,5 +324,6 @@ A: 确保使用 `-shortest` 和 `-t` 参数限制视频时长为音频时长。
 
 ## 版本历史
 
+- **v1.2.0** (2026-06-14): 视频背景改为纯黑（达芬奇抠字幕）；飞书推送用 send_message
 - **v1.1.0** (2026-06-14): 添加常见陷阱（字体、引号、旧文件、时长限制）；修复 video_v6.py 和 podcast_workflow.py 的 API key 读取
 - **v1.0.0** (2026-06-14): 初始版本，支持完整工作流

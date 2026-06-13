@@ -428,7 +428,189 @@ def save_to_obsidian(script, ep_num, topic, char_a, char_b, compliance, quality)
 # ============================================================
 # 主流程
 # ============================================================
-def main():
+
+# ============================================================
+# Step 8: 生成配图提示词
+# ============================================================
+def generate_image_prompts(script, char_a, char_b, topic):
+    """生成豆包/SD配图提示词"""
+    prompts = f"""# {char_a} vs {char_b} 配图提示词
+
+## 封面图
+
+```
+卡通插画风格的播客封面。画面中央是一个巨大的发光"VS"字母。
+左侧是一位{char_a}，穿着传统服饰，面带智慧的表情。
+右侧是一位{char_b}，穿着相应时代的服饰，面带思考的表情。
+背景是深蓝色星空渐变，融合东西方文化元素。
+底部有一条横幅，上面写着"{topic}"。
+整体风格：扁平化设计，色彩鲜艳，线条清晰，适合播客封面。
+```
+
+## 立论环节配图
+
+```
+卡通插画风格。画面分为左右两部分。
+左边：{char_a}的场景，色调温暖。
+右边：{char_b}的场景，色调冷峻。
+中间用一道光束分隔两个场景。
+顶部标题："立论环节"。
+风格：扁平化卡通，色彩对比鲜明。
+```
+
+## 辩论高潮配图
+
+```
+卡通插画风格。两位辩手站在一个圆形辩论台上。
+{char_a}在左边，手势激昂。
+{char_b}在右边，手指向上辩论。
+辩论台下方是融合的符号。
+背景是深蓝色，有光效从两人之间散发。
+顶部标题："自由辩论"。
+风格：扁平化卡通，充满张力和动感。
+```
+
+## 总结配图
+
+```
+卡通插画风格。两位辩手站在一起，握手言和。
+背景融合了双方的文化元素。
+中间有一个发光的符号，代表辩论主题。
+底部标题："思想的碰撞"。
+风格：扁平化卡通，温暖和谐的色调。
+```
+"""
+    return prompts
+
+# ============================================================
+# Step 9: 生成节目简介
+# ============================================================
+def generate_episode_desc(ep_num, topic, char_a, char_b, script):
+    """生成节目简介"""
+    # 提取关键论点
+    key_points = []
+    for seg in script:
+        if seg["speaker"] != "主播" and len(seg["text"]) > 80:
+            key_points.append(f"• {seg['speaker']}：{seg['text'][:60]}...")
+    
+    desc = f"""# EP{ep_num:02d} 节目简介
+
+## 简短版（标题）
+
+```
+【AI神仙打架】{topic}：{char_a}vs{char_b}
+```
+
+## 完整版（节目详情）
+
+```
+🎙️ AI神仙打架 · 第{ep_num}期
+
+辩题：{topic}
+
+当{char_a}遇上{char_b}，两位跨越时空的巨匠将就"{topic}"展开激烈辩论。
+
+🔵 正方：{char_a}
+基于其核心思想和立场，支持辩题观点。
+
+🟡 反方：{char_b}
+基于其核心思想和立场，反对辩题观点。
+
+💡 核心交锋：
+{chr(10).join(key_points[:5])}
+
+📱 收听平台：小宇宙 | 喜马拉雅 | B站
+
+⚠️ 本节目由AI生成，所有观点仅供娱乐和思考。
+```
+
+## 一句话简介（社交媒体用）
+
+```
+{char_a} vs {char_b}：{topic}。AI让两位穿越时空的巨匠正面交锋 🎙️
+```
+"""
+    return desc
+
+# ============================================================
+# Step 10: 生成 LRC 字幕
+# ============================================================
+def generate_lrc(script, ep_dir, ep_name):
+    """生成 LRC 双语字幕"""
+    import struct
+    seg_dir = ep_dir / "segments"
+    
+    def get_wav_duration(fp):
+        with open(fp, "rb") as f:
+            f.read(12)
+            while True:
+                c, n = f.read(4), struct.unpack("<I", f.read(4))[0]
+                if c == b"fmt ":
+                    fmt = f.read(n)
+                    _, _, sr, br = struct.unpack("<HHII", fmt[:12])
+                elif c == b"data":
+                    return n / br if br > 0 else 0
+                else:
+                    f.read(n)
+        return 0
+    
+    def fmt_lrc(seconds):
+        m = int(seconds // 60)
+        s = seconds % 60
+        return f"{m:02d}:{s:05.2f}"
+    
+    lrc_lines = []
+    lrc_lines.append(f"[ti:{ep_name}]")
+    lrc_lines.append(f"[ar:AI神仙打架]")
+    lrc_lines.append(f"[al:AI神仙打架]")
+    lrc_lines.append("")
+    
+    current_time = 0.0
+    
+    for i, seg in enumerate(script):
+        sp = seg["speaker"]
+        text = seg["text"]
+        
+        # 清理文本
+        for marker in ["[停顿", "停顿", "秒]", "秒。", "[停顿 ", "秒]"]:
+            text = text.replace(marker, "")
+        text = text.strip()
+        
+        # 获取音频时长
+        wav = seg_dir / f"{i+1:03d}_{sp}.wav"
+        dur = get_wav_duration(str(wav)) if wav.exists() else 3.0
+        
+        # 拆分句子
+        sentences = []
+        for sep in ["。", "！", "？"]:
+            if sep in text:
+                parts = text.split(sep)
+                for j, part in enumerate(parts):
+                    if part.strip():
+                        sentences.append(part.strip() + (sep if j < len(parts) - 1 else ""))
+                break
+        if not sentences:
+            sentences = [text]
+        
+        # 生成时间戳
+        time_per_sent = dur / max(len(sentences), 1)
+        
+        for j, sentence in enumerate(sentences):
+            timestamp = current_time + j * time_per_sent
+            lrc_time = fmt_lrc(timestamp)
+            # 中文字幕（暂不生成英文，需要时可调用LLM）
+            lrc_lines.append(f"[{lrc_time}] {sentence}")
+        
+        current_time += dur
+    
+    # 保存
+    lrc_path = ep_dir / f"{ep_name}.lrc"
+    with open(lrc_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lrc_lines))
+    
+    return str(lrc_path)
+
+\ndef main():
     parser = argparse.ArgumentParser(description="AI神仙打架 v3")
     parser.add_argument("--topic", required=True)
     parser.add_argument("--char-a", required=True)
@@ -522,6 +704,29 @@ if audio_path and video_path:
     # 7. 保存到 Obsidian
     save_to_obsidian(script, args.ep_num, args.topic, args.char_a, args.char_b, compliance, quality)
     
+
+    # 8. 生成配图提示词
+    print(f"\n🎨 [8/10] 生成配图提示词")
+    prompts = generate_image_prompts(script, args.char_a, args.char_b, args.topic)
+    prompts_path = ep_dir / "image_prompts.md"
+    with open(prompts_path, "w", encoding="utf-8") as f:
+        f.write(prompts)
+    print(f"   ✅ {prompts_path}")
+    
+    # 9. 生成节目简介
+    print(f"\n📝 [9/10] 生成节目简介")
+    description = generate_episode_desc(args.ep_num, args.topic, args.char_a, args.char_b, script)
+    desc_path = ep_dir / "episode_description.md"
+    with open(desc_path, "w", encoding="utf-8") as f:
+        f.write(description)
+    print(f"   ✅ {desc_path}")
+    
+    # 10. 生成 LRC 字幕
+    print(f"\n📜 [10/10] 生成 LRC 字幕")
+    lrc_path = generate_lrc(script, ep_dir, f"EP{args.ep_num:02d}_{safe_a}vs{safe_b}")
+    print(f"   ✅ {lrc_path}")
+
+
     # 输出摘要
     print("\n" + "=" * 50)
     print("✅ 完成")
